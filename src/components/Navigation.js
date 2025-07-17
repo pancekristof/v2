@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users, Settings, Monitor, FileText } from 'lucide-react';
+import { Users, Settings, Monitor, FileText, Search } from 'lucide-react';
 import { VIEW_TYPES } from '../constants';
 
 const Navigation = ({ currentView, setCurrentView }) => {
@@ -27,6 +27,12 @@ const Navigation = ({ currentView, setCurrentView }) => {
       label: 'Egészségügyi Szűrés',
       icon: FileText,
       color: 'bg-purple-500'
+    },
+    {
+      id: VIEW_TYPES.PATIENT_SEARCH,
+      label: 'Betegek Keresése',
+      icon: Search,
+      color: 'bg-teal-500'
     }
   ];
 

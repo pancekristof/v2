@@ -9,14 +9,16 @@ import {
   Palette, 
   Activity,
   Stethoscope,
-  FileText 
+  FileText,
+  Search
 } from 'lucide-react';
 
 export const VIEW_TYPES = {
   PATIENT: 'patient',
   ADMIN: 'admin',
   DISPLAY: 'display',
-  SCREENING: 'screening'
+  SCREENING: 'screening',
+  PATIENT_SEARCH: 'patient_search'  // Új view típus
 };
 
 export const PATIENT_STATUS = {

@@ -7,6 +7,7 @@ import PatientRegistration from './components/PatientRegistration';
 import AdminDashboard from './components/AdminDashboard';
 import WaitingRoomDisplay from './components/WaitingRoomDisplay';
 import HealthScreeningSystem from './components/screening/HealthScreeningSystem';
+import PatientSearch from './components/PatientSearch';
 
 const App = () => {
   const [currentView, setCurrentView] = useState(VIEW_TYPES.PATIENT);
@@ -50,6 +51,8 @@ const App = () => {
         return <WaitingRoomDisplay calledPatients={calledPatients} />;
       case VIEW_TYPES.SCREENING:
         return <HealthScreeningSystem />;
+      case VIEW_TYPES.PATIENT_SEARCH:
+        return <PatientSearch />;
       default:
         return <PatientRegistration />;
     }

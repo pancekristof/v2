@@ -310,6 +310,54 @@ const HealthScreeningSystem = () => {
     }
   };
 
+  // CSV Export functionality
+  const generateCSVExport = () => {
+    const headers = [
+      'Sorszám', 'Név', 'Irányítószám', 'Életkor', 'Nem', 'Testsúly (kg)', 'Testmagasság (cm)',
+      'BMI', 'BMI Osztály', 'Systolic', 'Diastolic', 'Vérnyomás Osztály', 'Pulzus', 'Pulzus Osztály',
+      'Oxigén %', 'Oxigén Osztály', 'Ajánlott Osztály', 'Dohányzás', 'Megjegyzés', 'Időpont'
+    ];
+
+    const rows = submissions.map(submission => [
+      submission.serialNumber || '',
+      submission.name || '',
+      submission.postalCode || '',
+      submission.age || '',
+      submission.gender || '',
+      submission.weight || '',
+      submission.height || '',
+      submission.validations?.bmi || '',
+      submission.validations?.bmiClass || '',
+      submission.systolic || '',
+      submission.diastolic || '',
+      submission.validations?.bpClass || '',
+      submission.pulse || '',
+      submission.validations?.pulseClass || '',
+      submission.oxygen || '',
+      submission.validations?.oxygenClass || '',
+      submission.recommendedClass || '',
+      submission.smoking || '',
+      submission.notes || '',
+      submission.timestamp ? new Date(submission.timestamp.seconds * 1000).toLocaleString('hu-HU') : ''
+    ]);
+
+    return [headers, ...rows].map(row => 
+      row.map(cell => `"${cell}"`).join(',')
+    ).join('\n');
+  };
+
+  const downloadCSV = (csvContent, filename) => {
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const getClassLabel = (classType) => {
     switch(classType) {
       case 'piros': return 'Piros Osztály';
@@ -340,76 +388,12 @@ const HealthScreeningSystem = () => {
 
   const medicationLabels = {
     'magas_vernyomas_gyogyszer': 'magas vérnyomásra',
-    'magas_verzsir_gyogyszer': 'magas vérzsír/koleszterinre',
+    'magas_verzsir_gyogyszer': 'magas vérzsír/koleszterin csökkentésre',
     'cukorbetegseg_tabletta': 'cukorbetegség tabletta',
     'cukorbetegseg_injeksio': 'cukorbetegség injekció',
     'tudobetegseg_gyogyszer': 'tüdőbetegségre',
     'erszukuleт_gyogyszer': 'érszűkületre',
     'szivritmus_gyogyszer': 'szívritmus zavarra'
-  };
-
-  const smokingOptions = [
-    { value: 'no_smoking', label: 'sosem dohányoztam és nikotinos termékeket sem használok' },
-    { value: 'light_smoker', label: 'igen, dohányzás, vagy pipázás vagy hevített dohánytermék vagy e-cigarettát használok' },
-    { value: 'occasional_smoker', label: 'már nem dohányzom, és nikotin tartalmú termékeket sem használok' },
-    { value: 'heavy_smoker', label: 'nem dohányzom, de egyéb nikotinos termékeket használok' }
-  ];
-
-  // CSV export funkciók
-  const generateCSVExport = () => {
-    const headers = [
-      'Sorszám', 'Név', 'Irányítószám', 'Életkor', 'Nem', 'Testsúly', 'Testmagasság', 
-      'BMI', 'BMI Osztály', 'Systolic', 'Diastolic', 'Vérnyomás Osztály', 'Pulzus', 
-      'Pulzus Osztály', 'Oxigén', 'Oxigén Osztály', 'Dohányzás', 'Dohányzás Osztály',
-      'Magas vérnyomás', 'Magas vérzsír', 'Cukorbetegség', 'Tüdőbetegség', 'Érszűkület', 
-      'Szívritmus zavar', 'Ajánlott Osztály', 'Megjegyzés', 'Időpont'
-    ];
-
-    const rows = submissions.map(submission => [
-      submission.serialNumber,
-      submission.name,
-      submission.postalCode,
-      submission.age,
-      submission.gender,
-      submission.weight,
-      submission.height,
-      submission.validations.bmi,
-      submission.validations.bmiClass,
-      submission.systolic,
-      submission.diastolic,
-      submission.validations.bpClass,
-      submission.pulse,
-      submission.validations.pulseClass,
-      submission.oxygen,
-      submission.validations.oxygenClass,
-      submission.smoking,
-      submission.validations.smokingClass,
-      submission.validations.diseaseValidations.magas_vernyomas,
-      submission.validations.diseaseValidations.magas_verzsir,
-      submission.validations.diseaseValidations.cukorbetegseg,
-      submission.validations.diseaseValidations.tudobetegseg,
-      submission.validations.diseaseValidations.erszukuleт,
-      submission.validations.diseaseValidations.szivritmus,
-      submission.recommendedClass,
-      submission.notes || '',
-      submission.timestamp ? new Date(submission.timestamp.seconds * 1000).toLocaleString('hu-HU') : ''
-    ]);
-
-    return [headers, ...rows].map(row => 
-      row.map(cell => `"${cell}"`).join(',')
-    ).join('\n');
-  };
-
-  const downloadCSV = (csvContent, filename) => {
-    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', filename);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
 
   // Loading state
@@ -510,9 +494,9 @@ const HealthScreeningSystem = () => {
                       onChange={(e) => handleInputChange('gender', e.target.value)}
                       className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 ${errors.gender ? 'border-red-500' : 'border-gray-300'}`}
                     >
-                      <option value="">Válasszon</option>
-                      <option value="Férfi">Férfi</option>
-                      <option value="Nő">Nő</option>
+                      <option value="">Válasszon...</option>
+                      <option value="férfi">Férfi</option>
+                      <option value="nő">Nő</option>
                     </select>
                     {errors.gender && <p className="text-red-500 text-sm mt-1">{errors.gender}</p>}
                   </div>
@@ -521,7 +505,7 @@ const HealthScreeningSystem = () => {
                     <input
                       type="number"
                       min="1"
-                      max="300"
+                      step="0.1"
                       value={formData.weight}
                       onChange={(e) => handleInputChange('weight', e.target.value)}
                       className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 ${errors.weight ? 'border-red-500' : 'border-gray-300'}`}
@@ -541,11 +525,11 @@ const HealthScreeningSystem = () => {
                     {errors.height && <p className="text-red-500 text-sm mt-1">{errors.height}</p>}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Vérnyomás systole (Hgmm) *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Systolic vérnyomás *</label>
                     <input
                       type="number"
                       min="50"
-                      max="300"
+                      max="250"
                       value={formData.systolic}
                       onChange={(e) => handleInputChange('systolic', e.target.value)}
                       className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 ${errors.systolic ? 'border-red-500' : 'border-gray-300'}`}
@@ -553,11 +537,11 @@ const HealthScreeningSystem = () => {
                     {errors.systolic && <p className="text-red-500 text-sm mt-1">{errors.systolic}</p>}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Vérnyomás diastole (Hgmm) *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Diastolic vérnyomás *</label>
                     <input
                       type="number"
                       min="30"
-                      max="200"
+                      max="150"
                       value={formData.diastolic}
                       onChange={(e) => handleInputChange('diastolic', e.target.value)}
                       className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 ${errors.diastolic ? 'border-red-500' : 'border-gray-300'}`}
@@ -577,7 +561,7 @@ const HealthScreeningSystem = () => {
                     {errors.pulse && <p className="text-red-500 text-sm mt-1">{errors.pulse}</p>}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">O2 (%) *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Oxigén szint (%) *</label>
                     <input
                       type="number"
                       min="70"
@@ -631,7 +615,9 @@ const HealthScreeningSystem = () => {
                           NEM
                         </label>
                       </div>
-                      {errors[`disease_${key}`] && <p className="text-red-500 text-sm">{errors[`disease_${key}`]}</p>}
+                      {errors[`disease_${key}`] && (
+                        <p className="text-red-500 text-sm mt-1">{errors[`disease_${key}`]}</p>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -641,12 +627,12 @@ const HealthScreeningSystem = () => {
               <div className="bg-green-50 rounded-lg p-6">
                 <h2 className="text-xl font-semibold text-green-800 mb-4 flex items-center">
                   <Pill className="w-5 h-5 mr-2" />
-                  Szed-e rendszeresen gyógyszert az alábbi krónikus betegségekre: *
+                  Szed-e Ön gyógyszert az alábbi betegségekre: *
                 </h2>
                 <div className="space-y-4">
                   {Object.entries(medicationLabels).map(([key, label]) => (
                     <div key={key} className="flex items-center justify-between">
-                      <span className="text-gray-700">{label}</span>
+                      <span className="text-gray-700">Gyógyszer {label}</span>
                       <div className="flex space-x-8">
                         <label className="flex items-center">
                           <input
@@ -669,7 +655,9 @@ const HealthScreeningSystem = () => {
                           NEM
                         </label>
                       </div>
-                      {errors[`medication_${key}`] && <p className="text-red-500 text-sm">{errors[`medication_${key}`]}</p>}
+                      {errors[`medication_${key}`] && (
+                        <p className="text-red-500 text-sm mt-1">{errors[`medication_${key}`]}</p>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -677,33 +665,62 @@ const HealthScreeningSystem = () => {
 
               {/* Dohányzás */}
               <div className="bg-yellow-50 rounded-lg p-6">
-                <h2 className="text-xl font-semibold text-yellow-800 mb-4">
-                  Dohányzási szokások *
-                </h2>
-                <div className="space-y-3">
-                  {smokingOptions.map((option) => (
-                    <label key={option.value} className="flex items-start">
-                      <input
-                        type="radio"
-                        name="smoking"
-                        value={option.value}
-                        checked={formData.smoking === option.value}
-                        onChange={(e) => handleInputChange('smoking', e.target.value)}
-                        className="mr-3 mt-1"
-                      />
-                      <span className="text-gray-700">{option.label}</span>
-                    </label>
-                  ))}
+                <h2 className="text-xl font-semibold text-yellow-800 mb-4">Dohányzás *</h2>
+                <div className="space-y-4">
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      name="smoking"
+                      value="no_smoking"
+                      checked={formData.smoking === 'no_smoking'}
+                      onChange={(e) => handleInputChange('smoking', e.target.value)}
+                      className="mr-3"
+                    />
+                    <span className="text-gray-700">Nem dohányzom</span>
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      name="smoking"
+                      value="occasional"
+                      checked={formData.smoking === 'occasional'}
+                      onChange={(e) => handleInputChange('smoking', e.target.value)}
+                      className="mr-3"
+                    />
+                    <span className="text-gray-700">Alkalmanként dohányzom</span>
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      name="smoking"
+                      value="regular"
+                      checked={formData.smoking === 'regular'}
+                      onChange={(e) => handleInputChange('smoking', e.target.value)}
+                      className="mr-3"
+                    />
+                    <span className="text-gray-700">Rendszeresen dohányzom</span>
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      name="smoking"
+                      value="heavy"
+                      checked={formData.smoking === 'heavy'}
+                      onChange={(e) => handleInputChange('smoking', e.target.value)}
+                      className="mr-3"
+                    />
+                    <span className="text-gray-700">Erősen dohányzom (napi 1+ doboz)</span>
+                  </label>
+                  {errors.smoking && <p className="text-red-500 text-sm mt-1">{errors.smoking}</p>}
                 </div>
-                {errors.smoking && <p className="text-red-500 text-sm mt-2">{errors.smoking}</p>}
               </div>
 
               {/* Submit button */}
-              <div className="flex justify-center pt-6">
+              <div className="text-center pt-6">
                 <button
                   onClick={handleSubmit}
                   disabled={loading}
-                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold py-3 px-8 rounded-lg text-lg transition-colors duration-200"
+                  className="px-8 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? 'Mentés...' : 'Kérdőív Beküldése'}
                 </button>
@@ -758,65 +775,67 @@ const HealthScreeningSystem = () => {
             
             {submissions.length === 0 ? (
               <div className="text-center py-12">
-                <p className="text-gray-500 text-lg">Még nincsenek beküldött kérdőívek</p>
+                <Heart className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-gray-600 mb-2">Még nincsenek szűrési eredmények</h3>
+                <p className="text-gray-500">Az első kérdőív kitöltése után itt jelennek meg az eredmények.</p>
               </div>
             ) : (
               <div className="space-y-6">
                 {/* Összesítő statisztikák */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div className="bg-red-50 p-4 rounded-lg">
-                    <h3 className="text-red-800 font-semibold">Piros Osztály</h3>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                  <div className="bg-red-100 p-4 rounded-lg">
+                    <h3 className="text-lg font-semibold text-red-800">Piros Osztály</h3>
                     <p className="text-2xl font-bold text-red-600">
                       {submissions.filter(s => s.recommendedClass === 'piros').length}
                     </p>
                   </div>
-                  <div className="bg-yellow-50 p-4 rounded-lg">
-                    <h3 className="text-yellow-800 font-semibold">Sárga Osztály</h3>
+                  <div className="bg-yellow-100 p-4 rounded-lg">
+                    <h3 className="text-lg font-semibold text-yellow-800">Sárga Osztály</h3>
                     <p className="text-2xl font-bold text-yellow-600">
                       {submissions.filter(s => s.recommendedClass === 'sárga').length}
                     </p>
                   </div>
-                  <div className="bg-green-50 p-4 rounded-lg">
-                    <h3 className="text-green-800 font-semibold">Zöld Osztály</h3>
+                  <div className="bg-green-100 p-4 rounded-lg">
+                    <h3 className="text-lg font-semibold text-green-800">Zöld Osztály</h3>
                     <p className="text-2xl font-bold text-green-600">
                       {submissions.filter(s => s.recommendedClass === 'zöld').length}
                     </p>
                   </div>
-                  <div className="bg-blue-50 p-4 rounded-lg">
-                    <h3 className="text-blue-800 font-semibold">Összes</h3>
+                  <div className="bg-blue-100 p-4 rounded-lg">
+                    <h3 className="text-lg font-semibold text-blue-800">Összes Szűrés</h3>
                     <p className="text-2xl font-bold text-blue-600">{submissions.length}</p>
                   </div>
                 </div>
 
-                {/* Részletes lista */}
+                {/* Adatok táblázat */}
                 <div className="overflow-x-auto">
-                  <table className="w-full border-collapse border border-gray-300">
-                    <thead>
-                      <tr className="bg-gray-100">
-                        <th className="border border-gray-300 p-2 text-left">Sorszám</th>
-                        <th className="border border-gray-300 p-2 text-left">Név</th>
-                        <th className="border border-gray-300 p-2 text-left">Kor</th>
-                        <th className="border border-gray-300 p-2 text-left">Nem</th>
-                        <th className="border border-gray-300 p-2 text-left">BMI</th>
-                        <th className="border border-gray-300 p-2 text-left">Vérnyomás</th>
-                        <th className="border border-gray-300 p-2 text-left">Ajánlott Osztály</th>
-                        <th className="border border-gray-300 p-2 text-left">Időpont</th>
+                  <table className="min-w-full bg-white border border-gray-300">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-2 border border-gray-300 text-left">Sorszám</th>
+                        <th className="px-4 py-2 border border-gray-300 text-left">Név</th>
+                        <th className="px-4 py-2 border border-gray-300 text-left">Életkor</th>
+                        <th className="px-4 py-2 border border-gray-300 text-left">Nem</th>
+                        <th className="px-4 py-2 border border-gray-300 text-left">BMI</th>
+                        <th className="px-4 py-2 border border-gray-300 text-left">Vérnyomás</th>
+                        <th className="px-4 py-2 border border-gray-300 text-left">Ajánlott Osztály</th>
+                        <th className="px-4 py-2 border border-gray-300 text-left">Időpont</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {submissions.map((submission) => (
-                        <tr key={submission.id} className="hover:bg-gray-50">
+                      {submissions.map((submission, index) => (
+                        <tr key={submission.id || index} className="hover:bg-gray-50">
                           <td className="border border-gray-300 p-2">{submission.serialNumber}</td>
                           <td className="border border-gray-300 p-2">{submission.name}</td>
                           <td className="border border-gray-300 p-2">{submission.age}</td>
                           <td className="border border-gray-300 p-2">{submission.gender}</td>
                           <td className="border border-gray-300 p-2">
-                            <span className={`px-2 py-1 rounded text-sm ${getClassColor(submission.validations.bmiClass)}`}>
-                              {submission.validations.bmi}
+                            <span className={`px-2 py-1 rounded text-sm ${getClassColor(submission.validations?.bmiClass)}`}>
+                              {submission.validations?.bmi}
                             </span>
                           </td>
                           <td className="border border-gray-300 p-2">
-                            <span className={`px-2 py-1 rounded text-sm ${getClassColor(submission.validations.bpClass)}`}>
+                            <span className={`px-2 py-1 rounded text-sm ${getClassColor(submission.validations?.bpClass)}`}>
                               {submission.systolic}/{submission.diastolic}
                             </span>
                           </td>
