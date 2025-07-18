@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, User, Calendar, FileText, Filter, Download, Eye, X } from 'lucide-react';
+import { Search, Download, X, Eye, AlertTriangle, CheckCircle } from 'lucide-react';
 import { firebaseService } from '../services/firebase';
 
 const PatientSearch = () => {
@@ -7,14 +7,14 @@ const PatientSearch = () => {
   const [filteredScreenings, setFilteredScreenings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedRecommendation, setSelectedRecommendation] = useState('all');
-  const [selectedPatient, setSelectedPatient] = useState(null);
+  const [classFilter, setClassFilter] = useState('all');
+  const [dateFilter, setDateFilter] = useState('all');
   const [showModal, setShowModal] = useState(false);
+  const [selectedPatient, setSelectedPatient] = useState(null);
 
   useEffect(() => {
     const unsubscribe = firebaseService.subscribeToScreenings((data) => {
       setScreenings(data);
-      setFilteredScreenings(data);
       setLoading(false);
     });
 
@@ -23,32 +23,195 @@ const PatientSearch = () => {
     };
   }, []);
 
-  useEffect(() => {
-    let filtered = screenings;
+  const filterScreenings = () => {
+    let filtered = [...screenings];
 
-    // Név és sorszám alapján keresés
+    // Text search
     if (searchTerm) {
-      filtered = filtered.filter(screening =>
+      filtered = filtered.filter(screening => 
         screening.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         screening.serialNumber?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
-    // Ajánlott osztály alapján szűrés
-    if (selectedRecommendation !== 'all') {
-      filtered = filtered.filter(screening =>
-        screening.recommendedClass === selectedRecommendation
-      );
+    // Class filter
+    if (classFilter !== 'all') {
+      filtered = filtered.filter(screening => screening.recommendedClass === classFilter);
+    }
+
+    // Date filter
+    if (dateFilter !== 'all') {
+      const now = new Date();
+      const filterDate = new Date();
+      
+      switch (dateFilter) {
+        case 'today':
+          filterDate.setHours(0, 0, 0, 0);
+          filtered = filtered.filter(screening => {
+            const screeningDate = new Date(screening.timestamp?.seconds * 1000 || screening.timestamp);
+            return screeningDate >= filterDate;
+          });
+          break;
+        case 'week':
+          filterDate.setDate(now.getDate() - 7);
+          filtered = filtered.filter(screening => {
+            const screeningDate = new Date(screening.timestamp?.seconds * 1000 || screening.timestamp);
+            return screeningDate >= filterDate;
+          });
+          break;
+        case 'month':
+          filterDate.setMonth(now.getMonth() - 1);
+          filtered = filtered.filter(screening => {
+            const screeningDate = new Date(screening.timestamp?.seconds * 1000 || screening.timestamp);
+            return screeningDate >= filterDate;
+          });
+          break;
+        default:
+          // No additional filtering for 'all'
+          break;
+      }
     }
 
     setFilteredScreenings(filtered);
-  }, [searchTerm, selectedRecommendation, screenings]);
+  };
+
+  useEffect(() => {
+    filterScreenings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screenings, searchTerm, classFilter, dateFilter]);
+
+  // Validation functions from the original system
+  const calculateValidations = (data) => {
+    console.log('Raw patient data:', data);
+    
+    const age = parseInt(data.age);
+    const weight = parseFloat(data.weight);
+    const height = parseFloat(data.height);
+    const systolic = parseInt(data.systolic || data.systolicBP);
+    const diastolic = parseInt(data.diastolic || data.diastolicBP);
+    const pulse = parseInt(data.pulse);
+    const oxygen = parseInt(data.oxygen || data.oxygenSaturation);
+
+    console.log('Parsed values:', { age, weight, height, systolic, diastolic, pulse, oxygen });
+
+    // BMI calculation and classification
+    const bmi = weight / Math.pow(height / 100, 2);
+    let bmiClass = 'white'; // Default
+    if (isNaN(bmi)) {
+      bmiClass = 'default';
+    } else if (bmi < 16) {
+      bmiClass = 'piros';
+    } else if (bmi < 18.5) {
+      bmiClass = 'white';
+    } else if (bmi <= 24.99) {
+      bmiClass = 'zöld';
+    } else if (bmi <= 29.99) {
+      bmiClass = 'white';
+    } else if (bmi <= 34.99) {
+      bmiClass = 'white';  // 31.6 should be white
+    } else if (bmi <= 39.99) {
+      bmiClass = 'piros';
+    } else {
+      bmiClass = 'piros';
+    }
+
+    console.log('BMI calculation:', { bmi: bmi.toFixed(1), bmiClass });
+
+    // Blood pressure classification
+    let bpClass = 'default'; // Default to gray
+    if (!isNaN(systolic) && !isNaN(diastolic)) {
+      if (systolic >= 110 && systolic <= 130 && diastolic >= 60 && diastolic <= 80) {
+        bpClass = 'zöld';
+      } else {
+        bpClass = 'white'; // 140/70 is outside optimal range, so white
+      }
+    }
+
+    console.log('Blood pressure calculation:', { systolic, diastolic, bpClass });
+
+    // Oxygen classification
+    let oxygenClass = 'default'; // Default to gray
+    if (!isNaN(oxygen)) {
+      if (oxygen < 93) {
+        oxygenClass = 'piros';
+      } else if (oxygen <= 94) {
+        oxygenClass = 'white';
+      } else if (oxygen >= 95 && oxygen <= 100) {
+        oxygenClass = 'zöld';
+      }
+      // 76% should be piros
+    }
+
+    console.log('Oxygen calculation:', { oxygen, oxygenClass });
+
+    // Pulse classification
+    let pulseClass = 'default'; // Default to gray
+    if (!isNaN(pulse)) {
+      if (pulse >= 60 && pulse <= 90) {
+        pulseClass = 'zöld';
+      } else if (pulse >= 50 && pulse <= 59 && age < 55 && bmi < 30) {
+        pulseClass = 'zöld';
+      } else if (pulse < 50 || pulse > 100) {
+        pulseClass = 'piros';
+        // 110 bpm should be piros
+      } else {
+        pulseClass = 'white';
+      }
+    }
+
+    console.log('Pulse calculation:', { pulse, pulseClass });
+
+    // Disease validations
+    const diseaseValidations = {};
+    const diseaseKeys = ['magas_vernyomas', 'magas_verzsir', 'cukorbetegseg', 'tudobetegseg', 'erszukuleт', 'szivritmus'];
+    
+    diseaseKeys.forEach(disease => {
+      const hasDisease = data.diseases?.[disease];
+      let hasMedication = false;
+      
+      // Medication connections
+      if (disease === 'magas_vernyomas') hasMedication = data.medications?.['magas_vernyomas_gyogyszer'];
+      else if (disease === 'magas_verzsir') hasMedication = data.medications?.['magas_verzsir_gyogyszer'];
+      else if (disease === 'cukorbetegseg') hasMedication = data.medications?.['cukorbetegseg_tabletta'] || data.medications?.['cukorbetegseg_injeksio'];
+      else if (disease === 'tudobetegseg') hasMedication = data.medications?.['tudobetegseg_gyogyszer'];
+      else if (disease === 'erszukuleт') hasMedication = data.medications?.['erszukuleт_gyogyszer'];
+      else if (disease === 'szivritmus') hasMedication = data.medications?.['szivritmus_gyogyszer'];
+
+      if (!hasDisease) {
+        diseaseValidations[disease] = 'zöld';
+      } else if (hasDisease && hasMedication) {
+        diseaseValidations[disease] = 'sárga';
+      } else if (hasDisease && !hasMedication) {
+        diseaseValidations[disease] = 'piros';
+      }
+    });
+
+    // Smoking
+    const smokingClass = data.smoking === 'no_smoking' ? 'zöld' : 'sárga';
+
+    const result = {
+      bmi: isNaN(bmi) ? 'N/A' : bmi.toFixed(1),
+      bmiClass,
+      bpClass,
+      oxygenClass,
+      pulseClass,
+      diseaseValidations,
+      smokingClass
+    };
+
+    // Final debug output
+    console.log('Final validation result:', result);
+
+    return result;
+  };
 
   const getClassColor = (classType) => {
     switch (classType) {
       case 'piros': return 'bg-red-100 text-red-800 border-red-200';
       case 'sárga': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
       case 'zöld': return 'bg-green-100 text-green-800 border-green-200';
+      case 'white': return 'bg-yellow-100 text-yellow-800 border-yellow-200'; // White category shows as yellow
+      case 'default': return 'bg-gray-100 text-gray-800 border-gray-200'; // Basic data stays gray
       default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
@@ -58,28 +221,23 @@ const PatientSearch = () => {
       case 'piros': return 'Piros Osztály';
       case 'sárga': return 'Sárga Osztály';
       case 'zöld': return 'Zöld Osztály';
+      case 'white': return 'Fehér Osztály';
       default: return 'Ismeretlen';
     }
   };
 
-  // Javított időpont formázás
   const formatDate = (timestamp) => {
     if (!timestamp) return 'Nincs dátum';
     
     let date;
-    
-    // Firebase timestamp objektum kezelése
     if (timestamp && typeof timestamp === 'object' && timestamp.seconds) {
       date = new Date(timestamp.seconds * 1000);
-    } 
-    // String vagy number timestamp
-    else if (typeof timestamp === 'string' || typeof timestamp === 'number') {
+    } else if (typeof timestamp === 'string' || typeof timestamp === 'number') {
       date = new Date(timestamp);
     } else {
       return 'Érvénytelen dátum';
     }
     
-    // Ellenőrizzük, hogy érvényes-e a dátum
     if (isNaN(date.getTime())) {
       return 'Érvénytelen dátum';
     }
@@ -90,13 +248,10 @@ const PatientSearch = () => {
     });
   };
 
-  // Javított BMI számítás vagy validations-ból olvasás
   const getBMI = (screening) => {
-    // Először próbáljuk a validations objektumból
     if (screening.validations && screening.validations.bmi) {
       return screening.validations.bmi;
     }
-    // Ha nincs, számoljuk ki
     if (screening.weight && screening.height && screening.height > 0) {
       const heightInMeters = screening.height / 100;
       const bmi = screening.weight / (heightInMeters * heightInMeters);
@@ -105,7 +260,6 @@ const PatientSearch = () => {
     return 'N/A';
   };
 
-  // Vérnyomás formázás
   const getBloodPressure = (screening) => {
     if (screening.systolic && screening.diastolic) {
       return `${screening.systolic}/${screening.diastolic}`;
@@ -116,7 +270,6 @@ const PatientSearch = () => {
     return 'N/A';
   };
 
-  // Korcsoport meghatározás
   const getAgeGroup = (age) => {
     if (!age) return 'N/A';
     if (age < 30) return '18-29';
@@ -125,6 +278,41 @@ const PatientSearch = () => {
     if (age < 60) return '50-59';
     if (age < 70) return '60-69';
     return '70+';
+  };
+
+  const viewPatientDetails = (patient) => {
+    setSelectedPatient(patient);
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setSelectedPatient(null);
+  };
+
+  // Update selected class functionality
+  const updateSelectedClass = async (screeningId, newClass) => {
+    try {
+      // Update in Firebase
+      await firebaseService.updateScreeningSelectedClass(screeningId, newClass);
+      
+      // Update local state
+      setScreenings(prev => prev.map(screening => 
+        screening.id === screeningId 
+          ? { ...screening, selectedClass: newClass }
+          : screening
+      ));
+      
+      setFilteredScreenings(prev => prev.map(screening => 
+        screening.id === screeningId 
+          ? { ...screening, selectedClass: newClass }
+          : screening
+      ));
+      
+    } catch (error) {
+      console.error('Hiba a választott osztály frissítésekor:', error);
+      alert('Hiba történt a választott osztály mentésekor!');
+    }
   };
 
   const exportToCSV = () => {
@@ -163,41 +351,6 @@ const PatientSearch = () => {
     document.body.removeChild(link);
   };
 
-  const viewPatientDetails = (patient) => {
-    setSelectedPatient(patient);
-    setShowModal(true);
-  };
-
-  const closeModal = () => {
-    setShowModal(false);
-    setSelectedPatient(null);
-  };
-
-  // Választott osztály frissítése
-  const updateSelectedClass = async (screeningId, newClass) => {
-    try {
-      // Frissítjük a Firebase-ben
-      await firebaseService.updateScreeningSelectedClass(screeningId, newClass);
-      
-      // Helyi state frissítése
-      setScreenings(prev => prev.map(screening => 
-        screening.id === screeningId 
-          ? { ...screening, selectedClass: newClass }
-          : screening
-      ));
-      
-      setFilteredScreenings(prev => prev.map(screening => 
-        screening.id === screeningId 
-          ? { ...screening, selectedClass: newClass }
-          : screening
-      ));
-      
-    } catch (error) {
-      console.error('Hiba a választott osztály frissítésekor:', error);
-      alert('Hiba történt a választott osztály mentésekor!');
-    }
-  };
-
   const getRecommendationStats = () => {
     const stats = {
       total: filteredScreenings.length,
@@ -206,6 +359,28 @@ const PatientSearch = () => {
       zöld: filteredScreenings.filter(s => s.recommendedClass === 'zöld').length
     };
     return stats;
+  };
+
+  const diseaseLabels = {
+    'magas_vernyomas': 'Magas vérnyomás',
+    'magas_verzsir': 'Magas vérzsír/koleszterin',
+    'cukorbetegseg': 'Cukorbetegség',
+    'tudobetegseg': 'Tüdőbetegség',
+    'erszukuleт': 'Érszűkület',
+    'szivritmus': 'Szívritmus zavar'
+  };
+
+  // Render detail item with color coding
+  const renderDetailItem = (label, value, validationClass = 'default', icon = null) => {
+    return (
+      <div className={`detail-item ${getClassColor(validationClass)} rounded-lg p-3 flex justify-between items-center border`}>
+        <span className="font-medium flex items-center gap-2">
+          {icon}
+          <strong>{label}:</strong>
+        </span>
+        <span className="font-semibold">{value}</span>
+      </div>
+    );
   };
 
   if (loading) {
@@ -240,7 +415,7 @@ const PatientSearch = () => {
             </button>
           </div>
 
-          {/* Statisztikák */}
+          {/* Statistics */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
             <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
               <div className="text-2xl font-bold text-blue-600">{stats.total}</div>
@@ -260,7 +435,7 @@ const PatientSearch = () => {
             </div>
           </div>
 
-          {/* Keresés és szűrők */}
+          {/* Search and filters */}
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1">
               <div className="relative">
@@ -274,123 +449,117 @@ const PatientSearch = () => {
                 />
               </div>
             </div>
-            <div className="flex items-center space-x-2">
-              <Filter className="w-4 h-4 text-gray-400" />
+            <div className="flex items-center gap-4">
               <select
-                value={selectedRecommendation}
-                onChange={(e) => setSelectedRecommendation(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                value={classFilter}
+                onChange={(e) => setClassFilter(e.target.value)}
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
               >
                 <option value="all">Minden osztály</option>
-                <option value="piros">Piros Osztály</option>
-                <option value="sárga">Sárga Osztály</option>
-                <option value="zöld">Zöld Osztály</option>
+                <option value="piros">Piros osztály</option>
+                <option value="sárga">Sárga osztály</option>
+                <option value="zöld">Zöld osztály</option>
+              </select>
+              
+              <select
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
+              >
+                <option value="all">Minden időszak</option>
+                <option value="today">Ma</option>
+                <option value="week">Elmúlt hét</option>
+                <option value="month">Elmúlt hónap</option>
               </select>
             </div>
           </div>
         </div>
 
-        {/* Betegek táblázata */}
+        {/* Results table */}
         <div className="bg-white rounded-lg shadow-md overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Sorszám
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Név
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Kor
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Nem
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    BMI
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Vérnyomás
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Ajánlott Osztály
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Választott Osztály
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Időpont
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Műveletek
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredScreenings.map((screening) => (
-                  <tr key={screening.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {screening.serialNumber || 'Nincs'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {screening.name || 'Név nélkül'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {screening.age || 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {screening.gender === 'male' ? 'Férfi' : 'Nő'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {getBMI(screening)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {getBloodPressure(screening)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full border ${getClassColor(screening.recommendedClass)}`}>
-                        {getClassLabel(screening.recommendedClass)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <select
-                        value={screening.selectedClass || screening.recommendedClass}
-                        onChange={(e) => updateSelectedClass(screening.id, e.target.value)}
-                        className={`text-xs font-semibold rounded border px-2 py-1 ${getClassColor(screening.selectedClass || screening.recommendedClass)}`}
-                      >
-                        <option value="piros">Piros Osztály</option>
-                        <option value="sárga">Sárga Osztály</option>
-                        <option value="zöld">Zöld Osztály</option>
-                      </select>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatDate(screening.timestamp)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <button
-                        onClick={() => viewPatientDetails(screening)}
-                        className="text-teal-600 hover:text-teal-900 flex items-center space-x-1"
-                      >
-                        <Eye className="w-4 h-4" />
-                        <span>Részletek</span>
-                      </button>
-                    </td>
+          {filteredScreenings.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Sorszám
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Név
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Kor
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      BMI
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Vérnyomás
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Ajánlott Osztály
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Időpont
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Műveletek
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {filteredScreenings.length === 0 && (
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {filteredScreenings.map((screening) => (
+                    <tr key={screening.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {screening.serialNumber || 'Nincs'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {screening.name || 'Név nélkül'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {screening.age || 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <span className={`px-2 py-1 rounded text-sm border ${getClassColor(screening.validations?.bmiClass || calculateValidations(screening).bmiClass)}`}>
+                          {getBMI(screening)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <span className={`px-2 py-1 rounded text-sm border ${getClassColor(screening.validations?.bpClass || calculateValidations(screening).bpClass)}`}>
+                          {getBloodPressure(screening)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full border ${getClassColor(screening.recommendedClass)}`}>
+                          {getClassLabel(screening.recommendedClass)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {formatDate(screening.timestamp)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <button
+                          onClick={() => viewPatientDetails(screening)}
+                          className="text-teal-600 hover:text-teal-900 flex items-center gap-1"
+                        >
+                          <Eye className="w-4 h-4" />
+                          Részletek
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
             <div className="text-center py-12">
-              <User className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Nincs találat</h3>
-              <p className="text-gray-500">
-                {searchTerm || selectedRecommendation !== 'all' 
-                  ? 'Próbálja meg módosítani a keresési feltételeket.'
-                  : 'Még nincsenek rögzített szűrési adatok.'
+              <Search className="mx-auto h-12 w-12 text-gray-400" />
+              <h3 className="mt-2 text-sm font-medium text-gray-900">Nincs találat</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                {screenings.length === 0 
+                  ? 'Még nincsenek rögzített szűrési adatok.'
+                  : 'Próbálja meg módosítani a keresési feltételeket.'
                 }
               </p>
             </div>
@@ -398,10 +567,10 @@ const PatientSearch = () => {
         </div>
       </div>
 
-      {/* Modal a beteg részletes adataihoz */}
+      {/* Enhanced Modal with Color Validation */}
       {showModal && selectedPatient && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg max-w-6xl w-full max-h-[95vh] overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
               <h2 className="text-xl font-bold text-gray-900">
                 Beteg részletes adatai - {selectedPatient.name}
@@ -415,113 +584,178 @@ const PatientSearch = () => {
             </div>
             
             <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Alapadatok */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Alapadatok</h3>
-                  <div className="space-y-2">
-                    <div><strong>Név:</strong> {selectedPatient.name || 'N/A'}</div>
-                    <div><strong>Sorszám:</strong> {selectedPatient.serialNumber || 'N/A'}</div>
-                    <div><strong>Kor:</strong> {selectedPatient.age || 'N/A'} éves</div>
-                    <div><strong>Korcsoport:</strong> {getAgeGroup(selectedPatient.age)}</div>
-                    <div><strong>Nem:</strong> {selectedPatient.gender === 'male' ? 'Férfi' : 'Nő'}</div>
-                    <div><strong>Irányítószám:</strong> {selectedPatient.postalCode || 'N/A'}</div>
-                    <div><strong>Magasság:</strong> {selectedPatient.height || 'N/A'} cm</div>
-                    <div><strong>Súly:</strong> {selectedPatient.weight || 'N/A'} kg</div>
-                    <div><strong>BMI:</strong> {getBMI(selectedPatient)}</div>
-                  </div>
-                </div>
-
-                {/* Mérési eredmények */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Mérési eredmények</h3>
-                  <div className="space-y-2">
-                    <div><strong>Vérnyomás:</strong> {getBloodPressure(selectedPatient)}</div>
-                    <div><strong>Oxigén telítettség:</strong> {
-                      selectedPatient.oxygenSaturation ? `${selectedPatient.oxygenSaturation}%` : 
-                      (selectedPatient.oxygen ? `${selectedPatient.oxygen}%` : 'N/A')
-                    }</div>
-                    <div><strong>Pulzus:</strong> {selectedPatient.pulse ? `${selectedPatient.pulse} bpm` : 'N/A'}</div>
-                    <div><strong>Dohányzás:</strong> {selectedPatient.smoking === 'no_smoking' ? 'Nem dohányzik' : 'Dohányzik'}</div>
-                  </div>
-                </div>
-
-                {/* Betegségek */}
-                {selectedPatient.diseases && (
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Betegségek</h3>
-                    <div className="space-y-2">
-                      {Object.entries(selectedPatient.diseases).map(([disease, hasDisease]) => (
-                        hasDisease && (
-                          <div key={disease} className="flex items-center space-x-2">
-                            <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                            <span className="capitalize">{disease.replace(/_/g, ' ')}</span>
-                          </div>
-                        )
-                      ))}
-                      {!Object.values(selectedPatient.diseases).some(Boolean) && (
-                        <div className="text-gray-500">Nincs betegség rögzítve</div>
+              {(() => {
+                const validations = selectedPatient.validations || calculateValidations(selectedPatient);
+                
+                return (
+                  <div className="space-y-6">
+                    {/* Patient risk assessment banner */}
+                    <div className={`p-4 rounded-lg border-l-4 ${
+                      selectedPatient.recommendedClass === 'piros' 
+                        ? 'bg-red-50 border-red-400' 
+                        : selectedPatient.recommendedClass === 'sárga' 
+                        ? 'bg-yellow-50 border-yellow-400' 
+                        : 'bg-green-50 border-green-400'
+                    }`}>
+                      <div className="flex items-center">
+                        {selectedPatient.recommendedClass === 'piros' ? (
+                          <AlertTriangle className="w-5 h-5 text-red-500 mr-2" />
+                        ) : (
+                          <CheckCircle className="w-5 h-5 text-green-500 mr-2" />
+                        )}
+                        <h4 className="font-medium">
+                          Páciens besorolása: <span className="font-bold">{getClassLabel(selectedPatient.recommendedClass)}</span>
+                        </h4>
+                      </div>
+                      {selectedPatient.recommendedClass === 'piros' && (
+                        <p className="mt-1 text-sm text-red-700">
+                          Sürgős orvosi konzultáció szükséges!
+                        </p>
                       )}
                     </div>
-                  </div>
-                )}
 
-                {/* Gyógyszerek */}
-                {selectedPatient.medications && (
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Gyógyszerek</h3>
-                    <div className="space-y-2">
-                      {Object.entries(selectedPatient.medications).map(([medication, takesIt]) => (
-                        takesIt && (
-                          <div key={medication} className="flex items-center space-x-2">
-                            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                            <span className="capitalize">{medication.replace(/_/g, ' ')}</span>
-                          </div>
-                        )
-                      ))}
-                      {!Object.values(selectedPatient.medications).some(Boolean) && (
-                        <div className="text-gray-500">Nincs gyógyszer rögzítve</div>
-                      )}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {/* Basic Data */}
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Alapadatok</h3>
+                        <div className="space-y-3">
+                          {renderDetailItem('Név', selectedPatient.name || 'N/A', 'gray')}
+                          {renderDetailItem('Sorszám', selectedPatient.serialNumber || 'N/A', 'gray')}
+                          {renderDetailItem('Kor', `${selectedPatient.age || 'N/A'} éves`, 'gray')}
+                          {renderDetailItem('Korcsoport', getAgeGroup(selectedPatient.age), 'gray')}
+                          {renderDetailItem('Nem', selectedPatient.gender === 'male' ? 'Férfi' : 'Nő', 'gray')}
+                          {renderDetailItem('Irányítószám', selectedPatient.postalCode || 'N/A', 'gray')}
+                        </div>
+                      </div>
+
+                      {/* Measurements with color coding */}
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Mérési eredmények</h3>
+                        <div className="space-y-3">
+                          {renderDetailItem('Magasság', `${selectedPatient.height || 'N/A'} cm`)} {/* Default gray */}
+                          {renderDetailItem('Súly', `${selectedPatient.weight || 'N/A'} kg`)} {/* Default gray */}
+                          {renderDetailItem('BMI', getBMI(selectedPatient), validations.bmiClass)} {/* Validation color */}
+                          {renderDetailItem('Vérnyomás', getBloodPressure(selectedPatient), validations.bpClass)} {/* Validation color */}
+                          {renderDetailItem('Oxigén telítettség', 
+                            selectedPatient.oxygenSaturation ? `${selectedPatient.oxygenSaturation}%` : 
+                            (selectedPatient.oxygen ? `${selectedPatient.oxygen}%` : 'N/A'), 
+                            validations.oxygenClass
+                          )} {/* Validation color */}
+                          {renderDetailItem('Pulzus', 
+                            selectedPatient.pulse ? `${selectedPatient.pulse} bpm` : 'N/A', 
+                            validations.pulseClass
+                          )} {/* Validation color */}
+                          {renderDetailItem('Dohányzás', 
+                            selectedPatient.smoking === 'no_smoking' ? 'Nem dohányzik' : 'Dohányzik', 
+                            validations.smokingClass
+                          )} {/* Validation color */}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Diseases with color coding */}
+                    {selectedPatient.diseases && (
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Betegségek</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {Object.entries(diseaseLabels).map(([diseaseKey, diseaseLabel]) => {
+                            const hasDisease = selectedPatient.diseases[diseaseKey];
+                            const validationClass = validations.diseaseValidations[diseaseKey];
+                            const status = hasDisease 
+                              ? (validationClass === 'sárga' ? 'Van (gyógyszerrel)' : 'Van (gyógyszer nélkül)')
+                              : 'Nincs';
+                            
+                            return (
+                              <div key={diseaseKey}>
+                                {renderDetailItem(diseaseLabel, status, validationClass)}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Medications */}
+                    {selectedPatient.medications && (
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Gyógyszerek</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          {Object.entries(selectedPatient.medications).map(([medication, takesIt]) => (
+                            takesIt && (
+                              <div key={medication} className="flex items-center space-x-2 p-2 bg-blue-50 rounded border border-blue-200">
+                                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                <span className="capitalize text-sm">{medication.replace(/_/g, ' ')}</span>
+                              </div>
+                            )
+                          ))}
+                          {!Object.values(selectedPatient.medications).some(Boolean) && (
+                            <div className="text-gray-500 italic">Nincs gyógyszer rögzítve</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Class information */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Recommended class */}
+                      <div className="p-4 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50">
+                        <div className="text-center">
+                          <div className="text-lg font-semibold text-gray-900 mb-2">Ajánlott osztály</div>
+                          <span className={`inline-flex px-4 py-2 text-lg font-semibold rounded-full border-2 ${getClassColor(selectedPatient.recommendedClass)}`}>
+                            {getClassLabel(selectedPatient.recommendedClass)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Selected class */}
+                      <div className="p-4 rounded-lg border-2 border-dashed border-blue-300 bg-blue-50">
+                        <div className="text-center">
+                          <div className="text-lg font-semibold text-gray-900 mb-2">Választott osztály</div>
+                          <span className={`inline-flex px-4 py-2 text-lg font-semibold rounded-full border-2 ${getClassColor(selectedPatient.selectedClass || selectedPatient.recommendedClass)}`}>
+                            {getClassLabel(selectedPatient.selectedClass || selectedPatient.recommendedClass)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Notes */}
+                    {selectedPatient.notes && (
+                      <div className="p-4 bg-gray-50 rounded-lg border">
+                        <div className="text-lg font-semibold text-gray-900 mb-2">Megjegyzések</div>
+                        <div className="text-gray-700">{selectedPatient.notes}</div>
+                      </div>
+                    )}
+
+                    {/* Color legend */}
+                                          <div className="bg-gray-50 rounded-lg p-4 border">
+                      <h4 className="font-semibold text-gray-900 mb-3">Színkód magyarázat:</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-4 h-4 bg-green-100 border border-green-200 rounded"></div>
+                          <span className="text-sm"><strong>Zöld:</strong> Normális / Nincs betegség</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-4 h-4 bg-yellow-100 border border-yellow-200 rounded"></div>
+                          <span className="text-sm"><strong>Sárga:</strong> Közepes kockázat / Figyelmeztetés</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-4 h-4 bg-red-100 border border-red-200 rounded"></div>
+                          <span className="text-sm"><strong>Piros:</strong> Magas kockázat / Kritikus</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-4 h-4 bg-gray-100 border border-gray-200 rounded"></div>
+                          <span className="text-sm"><strong>Szürke:</strong> Alapadatok</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Timestamp */}
+                    <div className="text-center text-sm text-gray-500 pt-4 border-t">
+                      Rögzítve: {formatDate(selectedPatient.timestamp)}
                     </div>
                   </div>
-                )}
-              </div>
-
-              {/* Osztály információk */}
-              <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Ajánlott osztály */}
-                <div className="p-4 rounded-lg border-2 border-dashed border-gray-300">
-                  <div className="text-center">
-                    <div className="text-lg font-semibold text-gray-900 mb-2">Ajánlott osztály</div>
-                    <span className={`inline-flex px-4 py-2 text-lg font-semibold rounded-full border-2 ${getClassColor(selectedPatient.recommendedClass)}`}>
-                      {getClassLabel(selectedPatient.recommendedClass)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Választott osztály */}
-                <div className="p-4 rounded-lg border-2 border-dashed border-blue-300">
-                  <div className="text-center">
-                    <div className="text-lg font-semibold text-gray-900 mb-2">Választott osztály</div>
-                    <span className={`inline-flex px-4 py-2 text-lg font-semibold rounded-full border-2 ${getClassColor(selectedPatient.selectedClass || selectedPatient.recommendedClass)}`}>
-                      {getClassLabel(selectedPatient.selectedClass || selectedPatient.recommendedClass)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Megjegyzések ha vannak */}
-              {selectedPatient.notes && (
-                <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                  <div className="text-lg font-semibold text-gray-900 mb-2">Megjegyzések</div>
-                  <div className="text-gray-700">{selectedPatient.notes}</div>
-                </div>
-              )}
-
-              {/* Időpont */}
-              <div className="mt-4 text-center text-sm text-gray-500">
-                Rögzítve: {formatDate(selectedPatient.timestamp)}
-              </div>
+                );
+              })()}
             </div>
           </div>
         </div>
